@@ -1,0 +1,307 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Waggora API",
+    "description": "B2B API for competitive gaming layer",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Waggora Support",
+      "email": "support@waggora.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/api",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.waggora.com",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register new player",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "username": {"type": "string"},
+                  "password": {"type": "string"},
+                  "displayName": {"type": "string"}
+                },
+                "required": ["email", "username", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Player created successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login player",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "password": {"type": "string"}
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/player/me": {
+      "get": {
+        "tags": ["Player"],
+        "summary": "Get current player profile",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "responses": {
+          "200": {
+            "description": "Player profile"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/wallet/balance": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Get wallet balance and history",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallet information"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/challenges/direct": {
+      "post": {
+        "tags": ["Challenges"],
+        "summary": "Create direct challenge",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "opponentId": {"type": "string"},
+                  "stakeAmount": {"type": "number"},
+                  "type": {"type": "string", "enum": ["DIRECT", "ASYNC"]}
+                },
+                "required": ["stakeAmount", "type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Challenge created"
+          },
+          "400": {
+            "description": "Insufficient balance"
+          }
+        }
+      }
+    },
+    "/challenges/{id}": {
+      "get": {
+        "tags": ["Challenges"],
+        "summary": "Get challenge details",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge details"
+          },
+          "404": {
+            "description": "Challenge not found"
+          }
+        }
+      }
+    },
+    "/results/submit": {
+      "post": {
+        "tags": ["Results"],
+        "summary": "Submit game result",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeId": {"type": "string"},
+                  "score": {"type": "number"}
+                },
+                "required": ["challengeId", "score"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Result submitted"
+          },
+          "404": {
+            "description": "Challenge not found"
+          }
+        }
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "tags": ["Leaderboard"],
+        "summary": "Get global leaderboard",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "default": 10}
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {"type": "integer", "default": 0}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaderboard entries"
+          }
+        }
+      }
+    },
+    "/marketplace/items": {
+      "get": {
+        "tags": ["Marketplace"],
+        "summary": "Get marketplace items",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "responses": {
+          "200": {
+            "description": "List of marketplace items"
+          }
+        }
+      }
+    },
+    "/marketplace/purchase": {
+      "post": {
+        "tags": ["Marketplace"],
+        "summary": "Purchase item from marketplace",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {"type": "string"},
+                  "quantity": {"type": "number"}
+                },
+                "required": ["itemId", "quantity"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Purchase successful"
+          },
+          "400": {
+            "description": "Invalid request or insufficient balance"
+          }
+        }
+      }
+    },
+    "/analytics/dashboard": {
+      "get": {
+        "tags": ["Analytics"],
+        "summary": "Get analytics dashboard",
+        "security": [
+          {"bearerAuth": []}
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard analytics"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {"name": "Authentication"},
+    {"name": "Player"},
+    {"name": "Wallet"},
+    {"name": "Challenges"},
+    {"name": "Results"},
+    {"name": "Leaderboard"},
+    {"name": "Marketplace"},
+    {"name": "Analytics"}
+  ]
+}
