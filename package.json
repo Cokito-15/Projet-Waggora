@@ -1,0 +1,28 @@
+{
+  "name": "waggora-mvp",
+  "version": "1.0.0",
+  "description": "Waggora - B2B API for competitive gaming layer",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:setup": "cd packages/db && npm run setup",
+    "db:migrate": "cd packages/db && npm run migrate:dev",
+    "db:push": "cd packages/db && npm run db:push",
+    "db:studio": "cd packages/db && npm run studio"
+  },
+  "devDependencies": {
+    "turbo": "^1.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
