@@ -1,0 +1,16 @@
+{
+  "name": "@waggora/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
