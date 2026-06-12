@@ -1,0 +1,1086 @@
+openapi: 3.0.3
+info:
+  title: Waggora API
+  description: |
+    ## Waggora — B2B Competitive Gaming Layer API
+
+    Transform any casual mobile game into a competitive experience.
+    Integrate in days, not months.
+
+    ### Authentication
+    All endpoints require either:
+    - `X-API-Key` header (studio server-to-server calls)
+    - `Authorization: Bearer {jwt}` (player-context calls via SDK)
+
+    ### Rate Limiting
+    Rate limits are per API Key. Headers returned:
+    - `X-RateLimit-Limit`: request limit per window
+    - `X-RateLimit-Remaining`: requests remaining
+    - `X-RateLimit-Reset`: UTC timestamp when window resets
+
+    ### Idempotency
+    For POST requests that modify state (challenges, purchases, wallet),
+    include `X-Idempotency-Key: {uuid}` to safely retry failed requests.
+  version: 1.0.0
+  contact:
+    name: Waggora Support
+    email: api@waggora.com
+    url: https://docs.waggora.com
+  license:
+    name: Commercial
+    url: https://waggora.com/terms
+
+servers:
+  - url: https://api.waggora.com/v1
+    description: Production
+  - url: https://api.staging.waggora.com/v1
+    description: Staging
+  - url: http://localhost:3000/v1
+    description: Local Development
+
+tags:
+  - name: Auth
+    description: Studio authentication and token management
+  - name: Players
+    description: Player registration and profile management
+  - name: Wallet
+    description: Token balance and transaction history
+  - name: Challenges
+    description: Create and manage competitive challenges
+  - name: Matchmaking
+    description: Queue management for finding opponents
+  - name: Leaderboard
+    description: Rankings and competitive standings
+  - name: Marketplace
+    description: Token-based rewards marketplace
+  - name: Analytics
+    description: Studio dashboard KPIs and metrics
+  - name: Webhooks
+    description: Event notification configuration
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Studio API key from dashboard
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Player JWT token issued by Waggora
+
+  schemas:
+    # ─── COMMON ────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: INSUFFICIENT_BALANCE
+        message:
+          type: string
+          example: Player does not have enough tokens for this stake
+        details:
+          type: object
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        perPage:
+          type: integer
+        hasMore:
+          type: boolean
+
+    # ─── PLAYERS ───────────────────────────────────────────────
+
+    PlayerCreate:
+      type: object
+      required: [externalId, displayName, gameId]
+      properties:
+        externalId:
+          type: string
+          maxLength: 255
+          description: Your game's internal user ID
+          example: "user_9876"
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: "ShadowBlade99"
+        gameId:
+          type: string
+          example: "clx_game_1234"
+        avatarUrl:
+          type: string
+          format: uri
+          example: "https://cdn.mygame.com/avatars/9876.png"
+        level:
+          type: integer
+          minimum: 1
+          example: 42
+        metadata:
+          type: object
+          description: Any additional data you want to store
+          example: { "country": "FR", "device": "iPhone14" }
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "clx1234abcdef"
+        externalId:
+          type: string
+          example: "user_9876"
+        displayName:
+          type: string
+          example: "ShadowBlade99"
+        avatarUrl:
+          type: string
+          nullable: true
+        level:
+          type: integer
+          example: 42
+        rating:
+          type: integer
+          description: Elo-based Waggora rating
+          example: 1250
+        wallet:
+          $ref: '#/components/schemas/WalletSummary'
+        stats:
+          $ref: '#/components/schemas/PlayerStats'
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    PlayerStats:
+      type: object
+      properties:
+        challengesPlayed:
+          type: integer
+          example: 87
+        challengesWon:
+          type: integer
+          example: 52
+        winRate:
+          type: number
+          format: float
+          example: 0.598
+        tokensWonLifetime:
+          type: integer
+          example: 4200
+
+    PlayerSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        level:
+          type: integer
+        rating:
+          type: integer
+
+    # ─── WALLET ────────────────────────────────────────────────
+
+    WalletSummary:
+      type: object
+      properties:
+        balance:
+          type: integer
+          description: Available tokens
+          example: 340
+        locked:
+          type: integer
+          description: Tokens locked in active challenge
+          example: 50
+
+    Wallet:
+      allOf:
+        - $ref: '#/components/schemas/WalletSummary'
+        - type: object
+          properties:
+            lifetime:
+              type: integer
+              description: Total tokens ever won
+              example: 4200
+            updatedAt:
+              type: string
+              format: date-time
+
+    WalletTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - CREDIT_PURCHASE
+            - CREDIT_WIN
+            - CREDIT_REFUND
+            - CREDIT_BONUS
+            - DEBIT_STAKE
+            - DEBIT_PURCHASE
+            - DEBIT_EXPIRY
+        amount:
+          type: integer
+          description: Positive for credits, negative for debits
+          example: -50
+        balanceBefore:
+          type: integer
+          example: 390
+        balanceAfter:
+          type: integer
+          example: 340
+        description:
+          type: string
+          nullable: true
+          example: "Stake for challenge clx_ch_9876"
+        createdAt:
+          type: string
+          format: date-time
+
+    # ─── CHALLENGES ────────────────────────────────────────────
+
+    ChallengeCreate:
+      type: object
+      required: [playerId, gameId, type, stake]
+      properties:
+        playerId:
+          type: string
+          example: "clx1234abcdef"
+        gameId:
+          type: string
+          example: "clx_game_1234"
+        type:
+          type: string
+          enum: [DIRECT, ASYNC]
+          example: DIRECT
+        stake:
+          type: integer
+          enum: [10, 20, 50, 100]
+          description: Tokens staked by each player
+          example: 50
+
+    ScoreSubmit:
+      type: object
+      required: [playerId, score]
+      properties:
+        playerId:
+          type: string
+        score:
+          type: integer
+          description: Raw game score
+          example: 12400
+        signature:
+          type: string
+          description: HMAC signature for anti-cheat (recommended)
+          example: "sha256=abc123..."
+        metadata:
+          type: object
+          properties:
+            duration:
+              type: integer
+              description: Game session duration in seconds
+              example: 185
+            level:
+              type: integer
+              example: 7
+            timestamp:
+              type: string
+              format: date-time
+
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "clx_ch_9876"
+        type:
+          type: string
+          enum: [DIRECT, ASYNC]
+        status:
+          type: string
+          enum: [PENDING, MATCHED, ACTIVE, AWAITING_OPPONENT, COMPLETED, CANCELLED, EXPIRED]
+        stake:
+          type: integer
+          example: 50
+        multiplier:
+          type: number
+          format: float
+          nullable: true
+          description: Revealed after matching
+          example: 1.5
+        challenger:
+          $ref: '#/components/schemas/PlayerSummary'
+        opponent:
+          $ref: '#/components/schemas/PlayerSummary'
+          nullable: true
+        result:
+          $ref: '#/components/schemas/ChallengeResult'
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ChallengeResult:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum: [CHALLENGER_WIN, OPPONENT_WIN, DRAW]
+        challengerScore:
+          type: integer
+          example: 12400
+        opponentScore:
+          type: integer
+          example: 9800
+        multiplierApplied:
+          type: number
+          format: float
+          example: 1.5
+        winnerPayout:
+          type: integer
+          description: Tokens won by winner
+          example: 90
+        waggoraCommission:
+          type: integer
+          description: Commission taken by Waggora
+          example: 10
+        processedAt:
+          type: string
+          format: date-time
+
+    # ─── MATCHMAKING ───────────────────────────────────────────
+
+    MatchmakingStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [SEARCHING, MATCHED, TIMEOUT]
+        challenge:
+          $ref: '#/components/schemas/Challenge'
+          nullable: true
+        estimatedWaitSeconds:
+          type: integer
+          nullable: true
+          example: 12
+        queueSize:
+          type: integer
+          description: Players in same stake queue
+          example: 23
+
+    # ─── LEADERBOARD ───────────────────────────────────────────
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+          example: 1
+        player:
+          $ref: '#/components/schemas/PlayerSummary'
+        score:
+          type: integer
+          example: 89500
+        tokensWon:
+          type: integer
+          example: 1240
+        challengesWon:
+          type: integer
+          example: 34
+
+    Leaderboard:
+      type: object
+      properties:
+        gameId:
+          type: string
+        type:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY, ALL_TIME]
+        period:
+          type: string
+          example: "2024-W01"
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+        playerRank:
+          $ref: '#/components/schemas/LeaderboardEntry'
+          nullable: true
+          description: Requesting player's rank (if provided)
+
+    # ─── MARKETPLACE ───────────────────────────────────────────
+
+    MarketplaceItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          example: "Dragon Skin"
+        description:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        category:
+          type: string
+          enum: [SKIN, BOOST, GIFT_CARD, SUBSCRIPTION, EVENT_TICKET, PARTNER_REWARD]
+        priceTokens:
+          type: integer
+          example: 200
+        stock:
+          type: integer
+          nullable: true
+          description: null = unlimited
+        isAvailable:
+          type: boolean
+
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: string
+        item:
+          $ref: '#/components/schemas/MarketplaceItem'
+        status:
+          type: string
+          enum: [PENDING, FULFILLED, REDEEMED, CANCELLED]
+        tokensSpent:
+          type: integer
+        redemptionCode:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # ─── ANALYTICS ─────────────────────────────────────────────
+
+    AnalyticsOverview:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "2024-01"
+        players:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 45230
+            active:
+              type: integer
+              example: 12840
+            waggoraUsers:
+              type: integer
+              example: 8420
+            waggoraAdoptionRate:
+              type: number
+              format: float
+              example: 0.656
+        challenges:
+          type: object
+          properties:
+            created:
+              type: integer
+            completed:
+              type: integer
+            completionRate:
+              type: number
+              format: float
+            totalStaked:
+              type: integer
+            avgStake:
+              type: number
+              format: float
+        retention:
+          type: object
+          properties:
+            d1:
+              type: number
+              format: float
+            d7:
+              type: number
+              format: float
+            d30:
+              type: number
+              format: float
+            d1WithWaggora:
+              type: number
+              format: float
+            d7WithWaggora:
+              type: number
+              format: float
+            d30WithWaggora:
+              type: number
+              format: float
+        revenue:
+          type: object
+          properties:
+            studioCommissionEarned:
+              type: number
+              format: float
+            waggoraCommission:
+              type: number
+              format: float
+            currency:
+              type: string
+              example: "EUR"
+        marketplace:
+          type: object
+          properties:
+            purchases:
+              type: integer
+            conversionRate:
+              type: number
+              format: float
+            topItems:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  purchases:
+                    type: integer
+
+# ─── PATHS ─────────────────────────────────────────────────────
+
+paths:
+
+  # AUTH ──────────────────────────────────────────────────────
+
+  /auth/token:
+    post:
+      tags: [Auth]
+      summary: Get studio access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiKey, secret]
+              properties:
+                apiKey:
+                  type: string
+                secret:
+                  type: string
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+                    example: 3600
+        '401':
+          description: Invalid credentials
+
+  # PLAYERS ─────────────────────────────────────────────────
+
+  /players:
+    post:
+      tags: [Players]
+      summary: Register or update a player
+      description: |
+        **Upsert operation** — safe to call on every game session start.
+
+        If the player doesn't exist (by `externalId` + `gameId`), creates them
+        and credits the welcome bonus (default: 100 tokens).
+
+        If the player exists, updates their `displayName`, `level`, and `lastSeenAt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerCreate'
+            example:
+              externalId: "user_9876"
+              displayName: "ShadowBlade99"
+              gameId: "clx_game_1234"
+              level: 42
+              avatarUrl: "https://cdn.mygame.com/avatars/9876.png"
+      responses:
+        '200':
+          description: Player registered or updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  player:
+                    $ref: '#/components/schemas/Player'
+                  created:
+                    type: boolean
+                    description: true if this is a new player
+              example:
+                player:
+                  id: "clx1234abcdef"
+                  externalId: "user_9876"
+                  displayName: "ShadowBlade99"
+                  level: 42
+                  rating: 1000
+                  wallet:
+                    balance: 100
+                    locked: 0
+                created: true
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid API Key
+        '404':
+          description: Game not found or not owned by this studio
+
+  /players/{playerId}:
+    get:
+      tags: [Players]
+      summary: Get player profile
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+          description: Player profile
+
+  # WALLET ──────────────────────────────────────────────────
+
+  /players/{playerId}/wallet:
+    get:
+      tags: [Wallet]
+      summary: Get player wallet balance
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Wallet details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+
+  /players/{playerId}/wallet/history:
+    get:
+      tags: [Wallet]
+      summary: Get wallet transaction history
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: perPage
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [CREDIT_WIN, DEBIT_STAKE, DEBIT_PURCHASE, CREDIT_BONUS]
+      responses:
+        '200':
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WalletTransaction'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # CHALLENGES ──────────────────────────────────────────────
+
+  /challenges:
+    post:
+      tags: [Challenges]
+      summary: Create a challenge and enter matchmaking
+      description: |
+        Creates a challenge and automatically enters the player into the
+        matchmaking queue for the specified stake amount.
+
+        **Token flow:**
+        1. Tokens are immediately locked from player's wallet
+        2. If no match found in 30s, tokens are refunded automatically
+        3. Multiplier is generated server-side before the game starts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChallengeCreate'
+            example:
+              playerId: "clx1234abcdef"
+              gameId: "clx_game_1234"
+              type: DIRECT
+              stake: 50
+      responses:
+        '201':
+          description: Challenge created, waiting for opponent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Challenge'
+        '402':
+          description: Insufficient token balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INSUFFICIENT_BALANCE
+                message: Player balance (30) is less than stake (50)
+        '409':
+          description: Player already has an active challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /challenges/{challengeId}:
+    get:
+      tags: [Challenges]
+      summary: Get challenge details
+      parameters:
+        - name: challengeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Challenge details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Challenge'
+
+  /challenges/{challengeId}/score:
+    post:
+      tags: [Challenges]
+      summary: Submit player score for a challenge
+      description: |
+        Submit the score after the player finishes their game session.
+
+        **Anti-cheat:** Include a `signature` (HMAC-SHA256 of `score:timestamp`
+        using your game secret) to enable server-side score validation.
+
+        **Result trigger:** When both players have submitted scores, the
+        result engine runs automatically and settles the wallet.
+      parameters:
+        - name: challengeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreSubmit'
+            example:
+              playerId: "clx1234abcdef"
+              score: 12400
+              metadata:
+                duration: 185
+                level: 7
+      responses:
+        '200':
+          description: Score recorded. If both scores received, result is included.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge:
+                    $ref: '#/components/schemas/Challenge'
+                  isComplete:
+                    type: boolean
+                  result:
+                    $ref: '#/components/schemas/ChallengeResult'
+                    nullable: true
+
+  /challenges/{challengeId}/cancel:
+    post:
+      tags: [Challenges]
+      summary: Cancel a pending challenge
+      description: Only possible if status is PENDING (no opponent found yet)
+      parameters:
+        - name: challengeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Challenge cancelled, tokens refunded
+        '409':
+          description: Challenge cannot be cancelled (already matched)
+
+  # MATCHMAKING ─────────────────────────────────────────────
+
+  /matchmaking/status/{playerId}:
+    get:
+      tags: [Matchmaking]
+      summary: Poll matchmaking status
+      description: |
+        Poll this endpoint every 2 seconds after creating a challenge.
+        The SDK handles this automatically.
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current matchmaking status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingStatus'
+
+  # LEADERBOARD ─────────────────────────────────────────────
+
+  /games/{gameId}/leaderboard:
+    get:
+      tags: [Leaderboard]
+      summary: Get game leaderboard
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [DAILY, WEEKLY, MONTHLY, ALL_TIME]
+            default: WEEKLY
+        - name: playerId
+          in: query
+          schema:
+            type: string
+          description: Include to get requesting player's rank
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Leaderboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Leaderboard'
+
+  # MARKETPLACE ─────────────────────────────────────────────
+
+  /marketplace/items:
+    get:
+      tags: [Marketplace]
+      summary: List available marketplace items
+      parameters:
+        - name: gameId
+          in: query
+          schema:
+            type: string
+          description: Filter items for specific game (includes global items)
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [SKIN, BOOST, GIFT_CARD, SUBSCRIPTION, EVENT_TICKET, PARTNER_REWARD]
+      responses:
+        '200':
+          description: Available items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceItem'
+
+  /marketplace/purchase:
+    post:
+      tags: [Marketplace]
+      summary: Purchase a marketplace item
+      description: |
+        Atomically deducts tokens and creates a purchase record.
+        For digital items (gift cards, codes), redemption code is returned immediately.
+        For game items (skins), triggers a webhook to your game server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerId, itemId]
+              properties:
+                playerId:
+                  type: string
+                itemId:
+                  type: string
+      responses:
+        '201':
+          description: Purchase successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Purchase'
+        '402':
+          description: Insufficient tokens
+        '410':
+          description: Item out of stock
+
+  # ANALYTICS ───────────────────────────────────────────────
+
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: Studio analytics overview (all KPIs)
+      parameters:
+        - name: gameId
+          in: query
+          schema:
+            type: string
+          description: Filter to specific game. Omit for all studio games.
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: "2024-01"
+          description: "Format: YYYY-MM for monthly, YYYY-WNN for weekly"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Complete analytics overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverview'
+
+  /analytics/retention:
+    get:
+      tags: [Analytics]
+      summary: Retention curves with/without Waggora
+      parameters:
+        - name: gameId
+          in: query
+          schema:
+            type: string
+        - name: cohort
+          in: query
+          schema:
+            type: string
+            example: "2024-01"
+      responses:
+        '200':
+          description: Retention data points
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  withWaggora:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:
+                          type: integer
+                        rate:
+                          type: number
+                          format: float
+                  withoutWaggora:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:
+                          type: integer
+                        rate:
+                          type: number
+                          format: float
