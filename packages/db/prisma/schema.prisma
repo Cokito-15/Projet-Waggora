@@ -1,0 +1,410 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── STUDIOS ────────────────────────────────────────────────────
+
+model Studio {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  apiKey         String   @unique @default(cuid())
+  apiSecret      String
+  webhookUrl     String?
+  webhookSecret  String?
+  plan           Plan     @default(STARTER)
+  isActive       Boolean  @default(true)
+  commissionRate Decimal  @default(0.10) @db.Decimal(4, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  games        Game[]
+  transactions StudioTransaction[]
+  apiUsageLogs ApiUsageLog[]
+
+  @@index([apiKey])
+}
+
+model Game {
+  id          String     @id @default(cuid())
+  studioId    String
+  name        String
+  bundleId    String     @unique
+  genre       GameGenre  @default(CASUAL)
+  isActive    Boolean    @default(true)
+  scoreType   ScoreType  @default(NUMERIC)
+  scoreOrder  ScoreOrder @default(DESC)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  studio       Studio        @relation(fields: [studioId], references: [id])
+  players      Player[]
+  challenges   Challenge[]
+  leaderboards Leaderboard[]
+  marketplaceItems MarketplaceItem[]
+
+  @@index([studioId])
+  @@index([bundleId])
+}
+
+// ─── JOUEURS ────────────────────────────────────────────────────
+
+model Player {
+  id          String   @id @default(cuid())
+  gameId      String
+  externalId  String
+  displayName String
+  avatarUrl   String?
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  rating      Int      @default(1000)
+  isActive    Boolean  @default(true)
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  game                   Game                  @relation(fields: [gameId], references: [id])
+  wallet                 Wallet?
+  challengesAsChallenger Challenge[]           @relation("Challenger")
+  challengesAsOpponent   Challenge[]           @relation("Opponent")
+  sessions               PlayerSession[]
+  leaderboardEntries     LeaderboardEntry[]
+  purchases              MarketplacePurchase[]
+  notifications          Notification[]
+
+  @@unique([gameId, externalId])
+  @@index([gameId])
+  @@index([rating])
+}
+
+model PlayerSession {
+  id        String    @id @default(cuid())
+  playerId  String
+  gameId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  duration  Int?
+  source    String?
+
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@index([playerId])
+  @@index([gameId, startedAt])
+}
+
+// ─── WALLET ─────────────────────────────────────────────────────
+
+model Wallet {
+  id        String   @id @default(cuid())
+  playerId  String   @unique
+  balance   Int      @default(0)
+  locked    Int      @default(0)
+  lifetime  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  player       Player              @relation(fields: [playerId], references: [id])
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id            String          @id @default(cuid())
+  walletId      String
+  type          TransactionType
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+  reference     String?
+  description   String?
+  createdAt     DateTime        @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+  @@index([createdAt])
+}
+
+// ─── DÉFIS ──────────────────────────────────────────────────────
+
+model Challenge {
+  id               String          @id @default(cuid())
+  gameId           String
+  challengerId     String
+  opponentId       String?
+  type             ChallengeType   @default(DIRECT)
+  status           ChallengeStatus @default(PENDING)
+  stake            Int
+  multiplier       Decimal?        @db.Decimal(3, 1)
+  multiplierSeed   String?
+  challengerScore  Int?
+  opponentScore    Int?
+  winnerId         String?
+  commission       Int?
+  winnerPayout     Int?
+  expiresAt        DateTime
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  game       Game            @relation(fields: [gameId], references: [id])
+  challenger Player          @relation("Challenger", fields: [challengerId], references: [id])
+  opponent   Player?         @relation("Opponent", fields: [opponentId], references: [id])
+  result     ChallengeResult?
+
+  @@index([gameId])
+  @@index([challengerId])
+  @@index([opponentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ChallengeResult {
+  id                String   @id @default(cuid())
+  challengeId       String   @unique
+  outcome           Outcome
+  challengerScore   Int
+  opponentScore     Int
+  multiplierApplied Decimal  @db.Decimal(3, 1)
+  challengerPayout  Int
+  opponentPayout    Int
+  waggoraCommission Int
+  processedAt       DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+}
+
+// ─── MATCHMAKING ────────────────────────────────────────────────
+
+model MatchmakingQueue {
+  id        String   @id @default(cuid())
+  gameId    String
+  playerId  String
+  stake     Int
+  ratingMin Int
+  ratingMax Int
+  enteredAt DateTime @default(now())
+  expiresAt DateTime
+  matched   Boolean  @default(false)
+
+  @@index([gameId, stake, matched])
+  @@index([expiresAt])
+}
+
+// ─── MARKETPLACE ────────────────────────────────────────────────
+
+model MarketplaceItem {
+  id          String       @id @default(cuid())
+  gameId      String?
+  name        String
+  description String?
+  imageUrl    String?
+  category    ItemCategory
+  priceTokens Int
+  stock       Int?
+  isActive    Boolean      @default(true)
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  game      Game?                 @relation(fields: [gameId], references: [id])
+  purchases MarketplacePurchase[]
+}
+
+model MarketplacePurchase {
+  id             String         @id @default(cuid())
+  playerId       String
+  itemId         String
+  status         PurchaseStatus @default(PENDING)
+  tokensSpent    Int
+  redemptionCode String?
+  redeemedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  player Player          @relation(fields: [playerId], references: [id])
+  item   MarketplaceItem @relation(fields: [itemId], references: [id])
+
+  @@index([playerId])
+}
+
+// ─── LEADERBOARD ────────────────────────────────────────────────
+
+model Leaderboard {
+  id        String          @id @default(cuid())
+  gameId    String
+  type      LeaderboardType @default(WEEKLY)
+  period    String
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+
+  game    Game               @relation(fields: [gameId], references: [id])
+  entries LeaderboardEntry[]
+
+  @@unique([gameId, type, period])
+}
+
+model LeaderboardEntry {
+  id            String   @id @default(cuid())
+  leaderboardId String
+  playerId      String
+  score         Int
+  rank          Int?
+  tokensWon     Int      @default(0)
+  challengesWon Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  leaderboard Leaderboard @relation(fields: [leaderboardId], references: [id])
+  player      Player      @relation(fields: [playerId], references: [id])
+
+  @@unique([leaderboardId, playerId])
+  @@index([leaderboardId, score])
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  playerId  String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@index([playerId, isRead])
+}
+
+// ─── ANALYTICS ──────────────────────────────────────────────────
+
+model ApiUsageLog {
+  id         String   @id @default(cuid())
+  studioId   String
+  endpoint   String
+  method     String
+  statusCode Int
+  latencyMs  Int
+  createdAt  DateTime @default(now())
+
+  studio Studio @relation(fields: [studioId], references: [id])
+
+  @@index([studioId, createdAt])
+}
+
+model StudioTransaction {
+  id        String                @id @default(cuid())
+  studioId  String
+  type      StudioTransactionType
+  amount    Decimal               @db.Decimal(10, 2)
+  currency  String                @default("EUR")
+  reference String?
+  createdAt DateTime              @default(now())
+
+  studio Studio @relation(fields: [studioId], references: [id])
+}
+
+// ─── ENUMS ──────────────────────────────────────────────────────
+
+enum Plan {
+  STARTER
+  GROWTH
+  SCALE
+  ENTERPRISE
+}
+
+enum GameGenre {
+  CASUAL
+  HYBRID_CASUAL
+  HYPERCASUAL
+  PUZZLE
+  RUNNER
+  ARCADE
+  STRATEGY
+  OTHER
+}
+
+enum ScoreType {
+  NUMERIC
+  TIME
+  DISTANCE
+}
+
+enum ScoreOrder {
+  ASC
+  DESC
+}
+
+enum TransactionType {
+  CREDIT_PURCHASE
+  CREDIT_WIN
+  CREDIT_REFUND
+  CREDIT_BONUS
+  DEBIT_STAKE
+  DEBIT_PURCHASE
+  DEBIT_EXPIRY
+}
+
+enum ChallengeType {
+  DIRECT
+  ASYNC
+}
+
+enum ChallengeStatus {
+  PENDING
+  MATCHED
+  ACTIVE
+  AWAITING_OPPONENT
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum Outcome {
+  CHALLENGER_WIN
+  OPPONENT_WIN
+  DRAW
+}
+
+enum ItemCategory {
+  SKIN
+  BOOST
+  GIFT_CARD
+  SUBSCRIPTION
+  EVENT_TICKET
+  PARTNER_REWARD
+}
+
+enum PurchaseStatus {
+  PENDING
+  FULFILLED
+  REDEEMED
+  CANCELLED
+}
+
+enum LeaderboardType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  ALL_TIME
+}
+
+enum NotificationType {
+  CHALLENGE_RECEIVED
+  CHALLENGE_RESULT
+  TOKENS_RECEIVED
+  LEADERBOARD_RANK
+  MARKETPLACE_FULFILLED
+  SYSTEM
+}
+
+enum StudioTransactionType {
+  COMMISSION_EARNED
+  PAYOUT
+  ADJUSTMENT
+}
